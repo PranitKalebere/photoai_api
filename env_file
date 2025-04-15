@@ -1,5 +1,0 @@
-AWS_ACCESS_KEY_ID="AKIA46SI6RE7EM3YHH7Q"
-AWS_SECRET_ACCESS_KEY="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"
-AWS_S3_BUCKET="waybeyondphotoai"
-
-MONGO_URL = "mongodb+srv://pranitkalebere:7xhb09Xei8eQoElW@cluster0.omhb6pv.mongodb.net/"
