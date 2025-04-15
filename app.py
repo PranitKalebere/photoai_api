@@ -5,6 +5,7 @@ from flask_cors import CORS
 
 from Face_Recogn.database import S3_file_Upload,MongoDb_
 import os
+import tempfile
 from werkzeug.utils import secure_filename
 # Now you can access them
 aws_access_key = os.getenv("AWS_ACCESS_KEY_ID")
@@ -72,16 +73,37 @@ def upload_photos():
         return jsonify({'message': 'No file part'}), 400
 
     files = request.files.getlist('photos')
-    
-    # Ensure the sub-event name is present in the request
+
     event_name = request.form.get('eventName')
     sub_event_name = request.form.get('subEventName')
-    image_classification(files)
-    print(event_name,sub_event_name)
-    urls = uploader.upload_image(event_name,sub_event_name,files)
-    return jsonify({
-        "urls":urls
-    })
+
+    temp_file_paths = []
+
+    try:
+        for file in files:
+            original_filename = secure_filename(file.filename)
+            temp_path = os.path.join(tempfile.gettempdir(), original_filename)
+            file.save(temp_path)
+            file.stream.seek(0)
+            temp_file_paths.append(temp_path)
+
+        # Run image classification
+        image_classification(temp_file_paths,event_name,sub_event_name)
+
+        # Upload with original filenames (assuming uploader handles FileStorage)
+        urls = uploader.upload_image(event_name, sub_event_name, files)
+
+        return jsonify({"urls": urls})
+
+    except Exception as e:
+        print(f"Error during upload: {e}")
+        return jsonify({'message': 'Internal Server Error'}), 500
+
+    finally:
+        for path in temp_file_paths:
+            if os.path.exists(path):
+                os.remove(path)
+                
 @app.route('/api/get-photos/<event_name>/<sub_event_name>', methods=['GET'])
 def get_photos(event_name, sub_event_name):
     try:
@@ -92,6 +114,7 @@ def get_photos(event_name, sub_event_name):
     except Exception as e:
         print(f"Error: {e}")
         return jsonify({"error": str(e)}), 500
+    
 
 @app.route('/api/create-sub-event', methods=['POST'])
 def create_sub_event():
