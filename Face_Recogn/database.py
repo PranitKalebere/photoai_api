@@ -21,7 +21,7 @@ class S3_file_Upload:
         )
         self.region = region_name
 
-    def upload_image(self, main_event, sub_event, files):
+    def upload_image(self, main_event, sub_event, files,cropped=False):
         try:
             # Ensure main_event and sub_event are not empty
             if not main_event or not sub_event:
@@ -39,6 +39,10 @@ class S3_file_Upload:
                     continue  # Skip empty files or files with no name
                 
                 filename = image.filename  # Get the image's filename (from the file object)
+                if cropped:
+                    print("cropped image")
+                    s3_key = f"{main_event}/{sub_event}/cropped/{filename}"
+                    
                 s3_key = f"{main_event}/{sub_event}/{filename}"
 
                 # Upload the image directly to S3
@@ -125,27 +129,35 @@ class MongoDb_:
         self.event_collection = self.database[event_collection]
         self.person_collection = self.database[persons_collection]
 
+    def image_info(self, image_person_mapping):
+        if not image_person_mapping:
+            return
 
-    def person_info(self,id,image_array):
+        for file_path, person_ids in image_person_mapping.items():
+            file_name = f"{os.path.basename(file_path)}"
+            now = datetime.now()
 
-        data = {
-            "person_id": id,
-            "person_name" :None,
-            "images_present" : image_array
-        }
+            for person_id in person_ids:
+                existing = self.person_collection.find_one({"person_id": person_id})
 
-
-    def image_info(self,image_person_mapping):
-        all_data = []
-        for file_name,person_ids in image_person_mapping.item():
-            data = {
-                "file_name": f"{file_name}_{uuid.uuid4()}",
-                "person_ids" : person_ids,
-                "uploaded_at" : datetime.now(),
-            }
-            all_data.append(data)
-        self.persons_collection.insert_many(all_data)
-
+                if existing:
+                    if file_name not in existing.get("images", []):
+                        self.person_collection.update_one(
+                            {"person_id": person_id},
+                            {
+                                "$push": {"images": file_name},
+                                "$set": {"updated_at": now}
+                            }
+                        )
+                else:
+                    new_data = {
+                        "person_id": person_id,
+                        "images": [file_name],
+                        "created_at": now,
+                        "updated_at": now
+                    }
+                    self.person_collection.insert_one(new_data)
+                
     def list_main_event(self):
         cursor = self.event_collection.find({}, {"main_event.event": 1, "_id": 0})
         events = [doc['main_event']['event'] for doc in cursor if 'main_event' in doc and 'event' in doc['main_event']]
